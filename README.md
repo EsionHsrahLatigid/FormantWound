@@ -2,6 +2,8 @@
 
 FormantWound is an EsionHsrahLatigid real-time LPC/source-filter destruction effect for JUCE.
 
+Current version: `0.1.1`.
+
 It analyzes the incoming signal as a bounded linear-predictive spectral envelope, corrupts the residual/excitation path, warps the reconstructed tract, and keeps hostile settings audible without allowing NaN, DC rail, clipped-constant, denormal, or ultrasonic-only failure modes.
 
 ## Identity

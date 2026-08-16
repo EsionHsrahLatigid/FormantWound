@@ -1,12 +1,15 @@
 #include "../Source/dsp/FormantWoundCore.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cmath>
 #include <exception>
 #include <iostream>
 #include <memory>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -84,6 +87,17 @@ std::vector<float> sine(float hz, std::size_t samples, float amplitude = 0.35f)
     std::vector<float> result(samples);
     for (std::size_t i = 0; i < samples; ++i)
         result[i] = amplitude * std::sin(2.0f * 3.14159265358979323846f * hz * static_cast<float>(i) / 48000.0f);
+    return result;
+}
+
+std::vector<float> sineAtRate(float hz, std::size_t samples, double sampleRate, float amplitude = 0.35f)
+{
+    std::vector<float> result(samples);
+    for (std::size_t i = 0; i < samples; ++i)
+    {
+        const auto phase = 2.0 * 3.14159265358979323846 * static_cast<double>(hz) * static_cast<double>(i) / sampleRate;
+        result[i] = amplitude * static_cast<float>(std::sin(phase));
+    }
     return result;
 }
 
@@ -316,6 +330,104 @@ void snapshot_reports_functional_state()
     expect(active > 0, "snapshot matrix should contain envelope cells");
 }
 
+void sample_rate_changes_discrete_timing_without_collapsing()
+{
+    FormantWoundParameters params;
+    params.resolution = 0.78f;
+    params.excitation = 0.65f;
+    params.warp = 0.42f;
+    params.reseed = 0.31f;
+    params.damage = 0.82f;
+    params.feedback = 0.68f;
+    params.mix = 1.0f;
+
+    auto fixedInput = seededNoise(18000);
+    auto at44 = render(params, fixedInput, { 64 }, 3, 44100.0);
+    auto at96 = render(params, fixedInput, { 64 }, 3, 96000.0);
+
+    float diff = 0.0f;
+    for (std::size_t i = 4000; i < fixedInput.size(); ++i)
+        diff += std::abs(at44[i] - at96[i]);
+    diff /= static_cast<float>(fixedInput.size() - 4000);
+    std::cout << "sample-rate discrete diff=" << diff << '\n';
+    expect(diff > 0.0005f, "sample-rate-aware timing should not render identical discrete behavior");
+
+    const std::array<double, 3> rates { 44100.0, 48000.0, 96000.0 };
+    float referenceRms = 0.0f;
+    for (auto rate : rates)
+    {
+        const auto samples = static_cast<std::size_t>(std::lround(rate * 0.35));
+        auto input = sineAtRate(260.0f, samples, rate, 0.28f);
+        auto output = render(params, input, { 37, 128, 511 }, 4, rate);
+        const auto metrics = measure(output);
+        std::cout << "sample-rate rate=" << rate << " rms=" << metrics.rms << " peak=" << metrics.peak
+                  << " zc=" << metrics.zeroCrossings << '\n';
+        expect(metrics.rms > 0.005f, "sample-rate-aware render should remain audible");
+        expect(metrics.peak <= 0.981f, "sample-rate-aware render should remain bounded");
+        expect(metrics.zeroCrossings > 50, "sample-rate-aware render should remain active");
+        if (referenceRms == 0.0f)
+        {
+            referenceRms = metrics.rms;
+        }
+        else
+        {
+            const auto ratio = metrics.rms / referenceRms;
+            expect(ratio > 0.25f && ratio < 4.0f, "perceptual gain should stay in the same range across sample rates");
+        }
+    }
+}
+
+void concurrent_snapshot_copy_remains_finite()
+{
+    FormantWoundCore core;
+    core.prepare(96000.0, 9);
+
+    std::atomic<bool> done { false };
+    std::atomic<int> failures { 0 };
+    std::thread reader([&] {
+        while (! done.load(std::memory_order_acquire))
+        {
+            WoundSnapshot snapshot;
+            core.copySnapshot(snapshot);
+            bool ok = std::isfinite(snapshot.inputRms)
+                   && std::isfinite(snapshot.wetRms)
+                   && std::isfinite(snapshot.residualRms)
+                   && std::isfinite(snapshot.envelopeMotion)
+                   && snapshot.activeOrder >= 0
+                   && snapshot.activeOrder <= 16;
+            for (auto value : snapshot.cells)
+                ok = ok && std::isfinite(value);
+            if (! ok)
+                failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    FormantWoundParameters params;
+    params.resolution = 0.9f;
+    params.excitation = 0.7f;
+    params.warp = 0.36f;
+    params.damage = 0.74f;
+    params.feedback = 0.66f;
+    params.mix = 1.0f;
+    for (int i = 0; i < 120000; ++i)
+    {
+        params.freeze = (i / 17000) % 2 == 1;
+        params.reseed = static_cast<float>((i / 11000) % 10) * 0.07f;
+        const auto input = 0.23f * std::sin(0.017f * static_cast<float>(i))
+                         + 0.11f * std::sin(0.071f * static_cast<float>(i));
+        expect(std::isfinite(core.processSample(input, params)), "concurrent snapshot stress output should be finite");
+    }
+
+    done.store(true, std::memory_order_release);
+    reader.join();
+    expect(failures.load(std::memory_order_relaxed) == 0, "concurrent snapshot reader should only observe finite state");
+
+    WoundSnapshot finalSnapshot;
+    core.copySnapshot(finalSnapshot);
+    expect(finalSnapshot.inputRms > 0.001f, "concurrent snapshot stress should publish input activity");
+    expect(finalSnapshot.wetRms > 0.001f, "concurrent snapshot stress should publish wet activity");
+}
+
 } // namespace
 
 int main()
@@ -329,6 +441,8 @@ int main()
         extremes_stay_aggressive_and_bounded();
         block_partition_determinism_and_reset();
         snapshot_reports_functional_state();
+        sample_rate_changes_discrete_timing_without_collapsing();
+        concurrent_snapshot_copy_remains_finite();
         std::cout << "FormantWound DSP tests passed\n";
         return 0;
     }

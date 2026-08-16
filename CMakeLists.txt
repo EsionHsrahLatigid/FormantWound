@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(FormantWound VERSION 0.1.0 LANGUAGES C CXX)
+project(FormantWound VERSION 0.1.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(FORMANTWOUND_BUILD_PLUGIN "Build the JUCE plug-in targets" ON)
 option(FORMANTWOUND_BUILD_TESTS "Build tests" ON)
+option(FORMANTWOUND_ENABLE_TSAN "Enable ThreadSanitizer for DSP tests" OFF)
 set(FORMANTWOUND_ARTIFACT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/artifacts" CACHE PATH
     "Directory for final VST3, AU, and Standalone products")
 set(EHL_JUCE_SOURCE_DIR "" CACHE PATH "Existing JUCE source checkout; avoids network when set")
@@ -22,6 +23,10 @@ if(MSVC)
     target_compile_options(formantwound_dsp PRIVATE /W4)
 else()
     target_compile_options(formantwound_dsp PRIVATE -Wall -Wextra -Wpedantic)
+    if(FORMANTWOUND_ENABLE_TSAN)
+        target_compile_options(formantwound_dsp PUBLIC -fsanitize=thread -fno-omit-frame-pointer)
+        target_link_options(formantwound_dsp PUBLIC -fsanitize=thread)
+    endif()
 endif()
 
 if(FORMANTWOUND_BUILD_TESTS)

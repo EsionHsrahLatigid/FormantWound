@@ -30,6 +30,12 @@ float dbToGain(float db) noexcept
 void FormantWoundCore::prepare(double newSampleRate, int channelSeed) noexcept
 {
     sampleRate = std::isfinite(newSampleRate) && newSampleRate > 1000.0 ? newSampleRate : 48000.0;
+    analysisFrameSamples = samplesForSeconds(512.0 / 48000.0, 128, historySize);
+    analysisHopSamples = samplesForSeconds(64.0 / 48000.0, 8, 256);
+    displayHopSamples = samplesForSeconds(1.0 / 30.0, 32, 8192);
+    coefficientSmoothing = onePoleCoefficient(0.00835);
+    followerSmoothing = onePoleCoefficient(0.0139);
+    dcCoefficient = static_cast<float>(std::exp(-2.0 * static_cast<double>(pi) * 38.0 / sampleRate));
     randomState = 0x6d2b79f5u ^ static_cast<std::uint32_t>(channelSeed * 0x45d9f3bu + 0x9e3779b9u);
     reset();
 }
@@ -45,10 +51,11 @@ void FormantWoundCore::reset() noexcept
     autocorrelation.fill(0.0f);
     lpcWork.fill(0.0f);
     envelopeHistory.fill(0.0f);
-    snapshot = {};
+    displaySnapshot = {};
     writeIndex = 0;
     samplesUntilAnalysis = 0;
-    impulseCountdown = 80;
+    samplesUntilDisplay = 0;
+    impulseCountdown = samplesForSeconds(80.0 / 48000.0, 1, historySize);
     activeOrder = 8;
     inputFollower = 0.0f;
     wetFollower = 0.0f;
@@ -59,6 +66,7 @@ void FormantWoundCore::reset() noexcept
     previousReseed = -1.0f;
     envelopeMotion = 0.0f;
     rescueActive = false;
+    publishSnapshot(displaySnapshot);
 }
 
 float FormantWoundCore::processSample(float input, const FormantWoundParameters& parameters) noexcept
@@ -68,7 +76,7 @@ float FormantWoundCore::processSample(float input, const FormantWoundParameters&
     if (std::abs(reseed - previousReseed) > 0.02f)
     {
         randomState ^= static_cast<std::uint32_t>(1u + static_cast<unsigned>(reseed * 65535.0f)) * 0x27d4eb2du;
-        impulseCountdown = 8 + static_cast<int>(nextNoise() * 120.0f);
+        impulseCountdown = samplesForSeconds((8.0 + static_cast<double>(nextNoise()) * 120.0) / 48000.0, 1, historySize);
         previousReseed = reseed;
     }
 
@@ -76,7 +84,7 @@ float FormantWoundCore::processSample(float input, const FormantWoundParameters&
     writeIndex = (writeIndex + 1) & (historySize - 1);
     if (--samplesUntilAnalysis <= 0)
     {
-        samplesUntilAnalysis = analysisHop;
+        samplesUntilAnalysis = analysisHopSamples;
         if (! parameters.freeze)
             analyzeFrame(parameters);
     }
@@ -92,7 +100,7 @@ float FormantWoundCore::processSample(float input, const FormantWoundParameters&
 
     for (int i = 0; i < maxOrder; ++i)
         currentCoefficients[static_cast<std::size_t>(i)] +=
-            (targetCoefficients[static_cast<std::size_t>(i)] - currentCoefficients[static_cast<std::size_t>(i)]) * 0.0025f;
+            (targetCoefficients[static_cast<std::size_t>(i)] - currentCoefficients[static_cast<std::size_t>(i)]) * coefficientSmoothing;
 
     float residual = input;
     for (int i = 0; i < order; ++i)
@@ -104,7 +112,9 @@ float FormantWoundCore::processSample(float input, const FormantWoundParameters&
     if (--impulseCountdown <= 0)
     {
         const auto base = 20 + static_cast<int>((1.0f - damage) * 130.0f);
-        impulseCountdown = std::max(3, base + static_cast<int>(nextNoise() * 37.0f));
+        impulseCountdown = samplesForSeconds((static_cast<double>(base) + static_cast<double>(nextNoise()) * 37.0) / 48000.0,
+                                             1,
+                                             historySize);
     }
     const auto impulse = impulseCountdown == 1 ? (nextNoise() > 0.5f ? 1.0f : -1.0f) : 0.0f;
     const auto corruptedExciter = residual * (1.0f - excitation)
@@ -145,7 +155,7 @@ float FormantWoundCore::processSample(float input, const FormantWoundParameters&
         rescueActive = false;
     }
 
-    const auto dcOut = wet - dcX + 0.995f * dcY;
+    const auto dcOut = wet - dcX + dcCoefficient * dcY;
     dcX = wet;
     dcY = sanitize(dcOut);
     wet = dcY;
@@ -159,9 +169,16 @@ float FormantWoundCore::processSample(float input, const FormantWoundParameters&
     synthesisHistory[0] = wet;
     feedbackState = wet;
 
-    inputFollower += (input * input - inputFollower) * 0.0015f;
-    residualFollower += (residual * residual - residualFollower) * 0.0015f;
-    wetFollower += (wet * wet - wetFollower) * 0.0015f;
+    inputFollower += (input * input - inputFollower) * followerSmoothing;
+    residualFollower += (residual * residual - residualFollower) * followerSmoothing;
+    wetFollower += (wet * wet - wetFollower) * followerSmoothing;
+
+    displaySnapshot.frozen = parameters.freeze;
+    if (--samplesUntilDisplay <= 0)
+    {
+        samplesUntilDisplay = displayHopSamples;
+        updateDisplay();
+    }
 
     if (mix <= 0.0f)
         return sanitize(input);
@@ -169,8 +186,6 @@ float FormantWoundCore::processSample(float input, const FormantWoundParameters&
     const auto wetOut = wet * dbToGain(parameters.outputDb) * 0.35f;
     auto output = input * (1.0f - mix) + wetOut * mix;
     output = std::clamp(softClip(output), -0.98f, 0.98f);
-    snapshot.frozen = parameters.freeze;
-    updateDisplay();
     return sanitize(output);
 }
 
@@ -179,10 +194,10 @@ void FormantWoundCore::analyzeFrame(const FormantWoundParameters& parameters) no
     const auto order = orderFromResolution(parameters.resolution);
     autocorrelation.fill(0.0f);
 
-    for (int n = 0; n < analysisSize; ++n)
+    for (int n = 0; n < analysisFrameSamples; ++n)
     {
         const auto historyIndex = (writeIndex - 1 - n + historySize) & (historySize - 1);
-        const auto window = 0.5f - 0.5f * std::cos(2.0f * pi * static_cast<float>(n) / static_cast<float>(analysisSize - 1));
+        const auto window = 0.5f - 0.5f * std::cos(2.0f * pi * static_cast<float>(n) / static_cast<float>(analysisFrameSamples - 1));
         const auto x = inputHistory[static_cast<std::size_t>(historyIndex)] * window;
         for (int lag = 0; lag <= order; ++lag)
         {
@@ -242,21 +257,35 @@ void FormantWoundCore::updateDisplay() noexcept
         {
             const auto level = envelopeHistory[static_cast<std::size_t>(x)];
             const auto threshold = 1.0f - static_cast<float>(y + 1) / static_cast<float>(WoundSnapshot::rows);
-            snapshot.cells[static_cast<std::size_t>(y * WoundSnapshot::columns + x)] = level > threshold ? level : 0.0f;
+            displaySnapshot.cells[static_cast<std::size_t>(y * WoundSnapshot::columns + x)] = level > threshold ? level : 0.0f;
         }
     }
 
-    snapshot.inputRms = std::sqrt(std::max(0.0f, inputFollower));
-    snapshot.wetRms = std::sqrt(std::max(0.0f, wetFollower));
-    snapshot.residualRms = std::sqrt(std::max(0.0f, residualFollower));
-    snapshot.envelopeMotion = envelopeMotion;
-    snapshot.activeOrder = activeOrder;
-    snapshot.rescue = rescueActive;
+    displaySnapshot.inputRms = std::sqrt(std::max(0.0f, inputFollower));
+    displaySnapshot.wetRms = std::sqrt(std::max(0.0f, wetFollower));
+    displaySnapshot.residualRms = std::sqrt(std::max(0.0f, residualFollower));
+    displaySnapshot.envelopeMotion = envelopeMotion;
+    displaySnapshot.activeOrder = activeOrder;
+    displaySnapshot.rescue = rescueActive;
+    publishSnapshot(displaySnapshot);
 }
 
 int FormantWoundCore::orderFromResolution(float resolution) const noexcept
 {
     return std::clamp(4 + static_cast<int>(clamp01(resolution) * 12.0f + 0.5f), 4, maxOrder);
+}
+
+int FormantWoundCore::samplesForSeconds(double seconds, int minimum, int maximum) const noexcept
+{
+    const auto raw = std::isfinite(seconds) ? seconds * sampleRate : static_cast<double>(minimum);
+    return std::clamp(static_cast<int>(std::lround(raw)), minimum, maximum);
+}
+
+float FormantWoundCore::onePoleCoefficient(double timeSeconds) const noexcept
+{
+    if (! std::isfinite(timeSeconds) || timeSeconds <= 0.0)
+        return 1.0f;
+    return static_cast<float>(1.0 - std::exp(-1.0 / (timeSeconds * sampleRate)));
 }
 
 float FormantWoundCore::nextNoise() noexcept
@@ -274,6 +303,55 @@ float FormantWoundCore::sanitize(float value) const noexcept
 
 void FormantWoundCore::copySnapshot(WoundSnapshot& destination) const noexcept
 {
-    destination = snapshot;
+    for (int attempt = 0; attempt < 4; ++attempt)
+    {
+        const auto begin = publishedSnapshot.sequence.load(std::memory_order_acquire);
+        if ((begin & 1u) != 0u)
+            continue;
+
+        WoundSnapshot next;
+        for (std::size_t i = 0; i < next.cells.size(); ++i)
+            next.cells[i] = publishedSnapshot.cells[i].load(std::memory_order_relaxed);
+        next.inputRms = publishedSnapshot.inputRms.load(std::memory_order_relaxed);
+        next.wetRms = publishedSnapshot.wetRms.load(std::memory_order_relaxed);
+        next.residualRms = publishedSnapshot.residualRms.load(std::memory_order_relaxed);
+        next.envelopeMotion = publishedSnapshot.envelopeMotion.load(std::memory_order_relaxed);
+        next.activeOrder = publishedSnapshot.activeOrder.load(std::memory_order_relaxed);
+        next.rescue = publishedSnapshot.rescue.load(std::memory_order_relaxed);
+        next.frozen = publishedSnapshot.frozen.load(std::memory_order_relaxed);
+
+        const auto end = publishedSnapshot.sequence.load(std::memory_order_acquire);
+        if (begin == end && (end & 1u) == 0u)
+        {
+            destination = next;
+            return;
+        }
+    }
+
+    for (std::size_t i = 0; i < destination.cells.size(); ++i)
+        destination.cells[i] = publishedSnapshot.cells[i].load(std::memory_order_relaxed);
+    destination.inputRms = publishedSnapshot.inputRms.load(std::memory_order_relaxed);
+    destination.wetRms = publishedSnapshot.wetRms.load(std::memory_order_relaxed);
+    destination.residualRms = publishedSnapshot.residualRms.load(std::memory_order_relaxed);
+    destination.envelopeMotion = publishedSnapshot.envelopeMotion.load(std::memory_order_relaxed);
+    destination.activeOrder = publishedSnapshot.activeOrder.load(std::memory_order_relaxed);
+    destination.rescue = publishedSnapshot.rescue.load(std::memory_order_relaxed);
+    destination.frozen = publishedSnapshot.frozen.load(std::memory_order_relaxed);
+}
+
+void FormantWoundCore::publishSnapshot(const WoundSnapshot& source) noexcept
+{
+    const auto begin = publishedSnapshot.sequence.load(std::memory_order_relaxed);
+    publishedSnapshot.sequence.store(begin + 1u, std::memory_order_release);
+    for (std::size_t i = 0; i < source.cells.size(); ++i)
+        publishedSnapshot.cells[i].store(source.cells[i], std::memory_order_relaxed);
+    publishedSnapshot.inputRms.store(source.inputRms, std::memory_order_relaxed);
+    publishedSnapshot.wetRms.store(source.wetRms, std::memory_order_relaxed);
+    publishedSnapshot.residualRms.store(source.residualRms, std::memory_order_relaxed);
+    publishedSnapshot.envelopeMotion.store(source.envelopeMotion, std::memory_order_relaxed);
+    publishedSnapshot.activeOrder.store(source.activeOrder, std::memory_order_relaxed);
+    publishedSnapshot.rescue.store(source.rescue, std::memory_order_relaxed);
+    publishedSnapshot.frozen.store(source.frozen, std::memory_order_relaxed);
+    publishedSnapshot.sequence.store(begin + 2u, std::memory_order_release);
 }
 } // namespace formantwound::dsp

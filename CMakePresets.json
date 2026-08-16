@@ -22,6 +22,18 @@
         "FORMANTWOUND_BUILD_PLUGIN": "ON",
         "FORMANTWOUND_BUILD_TESTS": "ON"
       }
+    },
+    {
+      "name": "engine-tsan",
+      "displayName": "Engine ThreadSanitizer",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/engine-tsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FORMANTWOUND_BUILD_PLUGIN": "OFF",
+        "FORMANTWOUND_BUILD_TESTS": "ON",
+        "FORMANTWOUND_ENABLE_TSAN": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -41,6 +53,13 @@
         "FormantWoundIntegrationTests",
         "FormantWoundPluginLoadTest"
       ]
+    },
+    {
+      "name": "engine-tsan",
+      "configurePreset": "engine-tsan",
+      "targets": [
+        "FormantWoundTests"
+      ]
     }
   ],
   "testPresets": [
@@ -54,6 +73,13 @@
     {
       "name": "plugin-release",
       "configurePreset": "plugin-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "engine-tsan",
+      "configurePreset": "engine-tsan",
       "output": {
         "outputOnFailure": true
       }
