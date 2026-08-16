@@ -9,7 +9,7 @@ FormantWound is the next JUCE input-effect plugin in the EHL expansion sequence.
 - Bundle ID: `jp.ehl.formantwound`
 - Manufacturer: `EsionHsrahLatigid`
 - Manufacturer code: `EHL_`
-- Plug-in code: `FmWt`
+- Plug-in code: `FmWd`
 - Framework: JUCE CMake effect plug-in
 - Public copy rule: keep the private descriptor internal only; do not emit it on public surfaces.
 
