@@ -10,7 +10,7 @@ It analyzes the incoming signal as a bounded linear-predictive spectral envelope
 - Manufacturer code: `EHL_`
 - Product: `FormantWound`
 - Bundle ID: `jp.ehl.formantwound`
-- Plug-in code: `FmWd`
+- Plug-in code: `FmWt`
 - Formats: VST3, Standalone, and AU on Apple platforms
 
 ## Controls

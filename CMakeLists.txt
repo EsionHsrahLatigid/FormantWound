@@ -80,7 +80,7 @@ if(FORMANTWOUND_BUILD_PLUGIN)
         PRODUCT_NAME "FormantWound"
         DESCRIPTION "LPC source-filter envelope damage and corrupted excitation effect"
         PLUGIN_MANUFACTURER_CODE EHL_
-        PLUGIN_CODE FmWd
+        PLUGIN_CODE FmWt
         AU_SANDBOX_SAFE TRUE
         FORMATS ${FORMANTWOUND_FORMATS}
         IS_SYNTH FALSE
@@ -179,7 +179,7 @@ if(FORMANTWOUND_BUILD_PLUGIN)
             -DPRODUCT_NAME=FormantWound
             -DSLUG=formantwound
             -DBUNDLE_ID=jp.ehl.formantwound
-            -DPLUGIN_CODE=FmWd
+            -DPLUGIN_CODE=FmWt
             -DSTAGE_DIR=${formantwound_staged_products}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/WriteArtifactsManifest.cmake")
 
