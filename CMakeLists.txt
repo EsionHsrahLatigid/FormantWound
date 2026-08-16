@@ -139,6 +139,9 @@ if(FORMANTWOUND_BUILD_PLUGIN)
             COMMAND ${CMAKE_COMMAND} -E rm -rf "${formantwound_staged_products}/au/formantwound_au_plugin.component"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                     "${formantwound_juce_products}/VST3/FormantWound.vst3" "${formantwound_staged_products}/vst3/formantwound_vst3_plugin.vst3"
+            COMMAND ${CMAKE_COMMAND}
+                    -DMODULE_INFO="${formantwound_staged_products}/vst3/formantwound_vst3_plugin.vst3/Contents/Resources/moduleinfo.json"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NormalizeVST3ModuleInfo.cmake"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                     "${formantwound_juce_products}/Standalone/FormantWound.app" "${formantwound_staged_products}/standalone/formantwound_standalone_plugin.app")
     elseif(WIN32)
@@ -146,6 +149,9 @@ if(FORMANTWOUND_BUILD_PLUGIN)
             COMMAND ${CMAKE_COMMAND} -E rm -rf "${formantwound_staged_products}/vst3/formantwound_vst3_plugin.vst3"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                     "${formantwound_juce_products}/VST3/FormantWound.vst3" "${formantwound_staged_products}/vst3/formantwound_vst3_plugin.vst3"
+            COMMAND ${CMAKE_COMMAND}
+                    -DMODULE_INFO="${formantwound_staged_products}/vst3/formantwound_vst3_plugin.vst3/Contents/Resources/moduleinfo.json"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NormalizeVST3ModuleInfo.cmake"
             COMMAND ${CMAKE_COMMAND} -E copy
                     "${formantwound_juce_products}/Standalone/FormantWound.exe" "${formantwound_staged_products}/standalone/formantwound_standalone_plugin.exe")
     else()
@@ -153,6 +159,9 @@ if(FORMANTWOUND_BUILD_PLUGIN)
             COMMAND ${CMAKE_COMMAND} -E rm -rf "${formantwound_staged_products}/vst3/formantwound_vst3_plugin.vst3"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                     "${formantwound_juce_products}/VST3/FormantWound.vst3" "${formantwound_staged_products}/vst3/formantwound_vst3_plugin.vst3"
+            COMMAND ${CMAKE_COMMAND}
+                    -DMODULE_INFO="${formantwound_staged_products}/vst3/formantwound_vst3_plugin.vst3/Contents/Resources/moduleinfo.json"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NormalizeVST3ModuleInfo.cmake"
             COMMAND ${CMAKE_COMMAND} -E copy
                     "${formantwound_juce_products}/Standalone/FormantWound" "${formantwound_staged_products}/standalone/formantwound_standalone_plugin")
     endif()
