@@ -10,6 +10,14 @@ Comprehensive research: implementation reference lookup plus current best-practi
 
 ## Primary sources
 
+- ITU-T Recommendation G.729 (06/2012), "Coding of speech at 8 kbit/s using conjugate-structure algebraic-code-excited linear prediction (CS-ACELP)". https://www.itu.int/rec/T-REC-G.729-201206-I/en
+  - Establishes a production speech-coding source/filter precedent around linear prediction, algebraic excitation, bounded frame updates, and reference implementation/test-vector discipline.
+- B. S. Atal and M. R. Schroeder, "Adaptive Predictive Coding of Speech Signals", *Bell System Technical Journal* (1970). DOI: https://doi.org/10.1002/j.1538-7305.1970.tb04297.x
+  - Establishes adaptive linear prediction for speech signals, periodic coefficient readjustment, and residual transmission as the conceptual basis for exposing LPC order/resolution.
+- A. V. Oppenheim, "Speech Analysis-Synthesis System Based on Homomorphic Filtering", *The Journal of the Acoustical Society of America* (1969). DOI: https://doi.org/10.1121/1.1911395
+  - Supports separating broad spectral envelope from excitation-like detail through cepstral/homomorphic analysis-synthesis.
+- DAFX chapter 9, "Source-filter Processing". https://www.dafx.de/DAFX_Book_Page/chapter9.html
+  - Frames source-filter separation, LPC, cepstrum, spectral envelope mutation, and formant changing as audio-effect techniques.
 - Lawrence R. Rabiner, "Digital-formant synthesizer for speech-synthesis studies", *The Journal of the Acoustical Society of America* (1968). PubMed: https://pubmed.ncbi.nlm.nih.gov/5645831/ DOI: https://doi.org/10.1121/1.1910901
   - Establishes the classic digital formant synthesizer as a source-filter system and explicitly discusses serial vs. parallel synthesizer tradeoffs.
   - The summary notes voiced and unvoiced excitation, a voice-bar path for stop closures, and a simple higher-pole correction network.
@@ -80,22 +88,21 @@ The output strategy should therefore include:
 - a recent-input activity latch that can inject a low-level bounded exciter when the active path collapses;
 - a final output trim or ceiling.
 
-## Proposed parameter set
+## Implemented parameter set
 
-This is the current research recommendation, not the final implementation contract.
+This is the current implementation contract.
 
 | Parameter | Range | Default | Role |
 |---|---:|---:|---|
-| `tract` | `0.0 .. 1.0` | `0.55` | Bark-domain formant warp and vowel exaggeration |
-| `spread` | `0.0 .. 1.0` | `0.40` | Expand or compress spacing between formants |
-| `bite` | `0.0 .. 1.0` | `0.50` | Resonance sharpness and pole-radius clamp |
-| `nasal` | `0.0 .. 1.0` | `0.15` | Anti-resonance notch and low-mid shaping |
-| `rough` | `0.0 .. 1.0` | `0.25` | Deterministic frame-to-frame jitter |
-| `excite` | `0.0 .. 1.0` | `0.65` | Input residual versus internal exciter blend |
+| `resolution` | `0.0 .. 1.0` | `0.55` | LPC order from 4 to 16 coefficients |
+| `excitation` | `0.0 .. 1.0` | `0.45` | Residual versus deterministic noise/impulse corruption |
+| `warp` | `0.0 .. 1.0` | `0.52` | Formant-envelope coefficient fold around neutral |
+| `freeze` | `off/on` | `off` | Hold the last analyzed tract while excitation continues |
+| `reseed` | `0.0 .. 1.0` | `0.0` | Deterministically reseed excitation corruption |
+| `damage` | `0.0 .. 1.0` | `0.35` | Coefficient quantization, saturation, and collapse pressure |
+| `feedback` | `0.0 .. 0.92` | `0.18` | Bounded wet feedback into the source-filter path |
 | `mix` | `0.0 .. 1.0` | `1.0` | Wet mix |
 | `output` | `-24 dB .. +12 dB` | `0 dB` | Final trim |
-
-If the final layout needs fewer controls, `spread` and `bite` can fold into `tract`, and `nasal` can become a mode switch.
 
 ## UI direction
 
