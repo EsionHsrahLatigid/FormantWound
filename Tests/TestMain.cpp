@@ -321,13 +321,42 @@ void snapshot_reports_functional_state()
         (void) core.processSample(0.2f * std::sin(0.03f * static_cast<float>(i)), params);
 
     WoundSnapshot snapshot;
-    core.copySnapshot(snapshot);
+    expect(core.copySnapshot(snapshot), "snapshot copy should succeed after stable publication");
     expect(snapshot.inputRms > 0.01f, "snapshot should report input activity");
     expect(snapshot.wetRms > 0.01f, "snapshot should report wet activity");
     expect(snapshot.residualRms > 0.001f, "snapshot should report residual activity");
     expect(snapshot.activeOrder >= 4, "snapshot should report active LPC order");
     const auto active = std::count_if(snapshot.cells.begin(), snapshot.cells.end(), [](float v) { return v > 0.0f; });
     expect(active > 0, "snapshot matrix should contain envelope cells");
+}
+
+void snapshot_copy_rejects_in_progress_publication()
+{
+    FormantWoundCore core;
+    core.prepare(48000.0, 0);
+
+    FormantWoundParameters params;
+    params.resolution = 0.9f;
+    params.excitation = 0.7f;
+    params.damage = 0.8f;
+    for (int i = 0; i < 12000; ++i)
+        (void) core.processSample(0.25f * std::sin(0.021f * static_cast<float>(i)), params);
+
+    WoundSnapshot stable;
+    expect(core.copySnapshot(stable), "stable snapshot copy should succeed before forced in-progress publication");
+    expect(stable.inputRms > 0.001f, "stable snapshot should contain input activity");
+
+    WoundSnapshot retained = stable;
+    core.forceSnapshotSequenceForTest(3u);
+    expect(! core.copySnapshot(retained), "odd in-progress snapshot sequence should be rejected");
+    expect(retained.cells == stable.cells, "failed snapshot copy should retain previous display cells");
+    near(retained.inputRms, stable.inputRms, 0.0f, "failed snapshot copy should retain input RMS");
+    near(retained.wetRms, stable.wetRms, 0.0f, "failed snapshot copy should retain wet RMS");
+    near(retained.residualRms, stable.residualRms, 0.0f, "failed snapshot copy should retain residual RMS");
+    near(retained.envelopeMotion, stable.envelopeMotion, 0.0f, "failed snapshot copy should retain envelope motion");
+    expect(retained.activeOrder == stable.activeOrder, "failed snapshot copy should retain active order");
+    expect(retained.rescue == stable.rescue, "failed snapshot copy should retain rescue state");
+    expect(retained.frozen == stable.frozen, "failed snapshot copy should retain freeze state");
 }
 
 void sample_rate_changes_discrete_timing_without_collapsing()
@@ -385,10 +414,10 @@ void concurrent_snapshot_copy_remains_finite()
     std::atomic<bool> done { false };
     std::atomic<int> failures { 0 };
     std::thread reader([&] {
+        WoundSnapshot snapshot;
         while (! done.load(std::memory_order_acquire))
         {
-            WoundSnapshot snapshot;
-            core.copySnapshot(snapshot);
+            (void) core.copySnapshot(snapshot);
             bool ok = std::isfinite(snapshot.inputRms)
                    && std::isfinite(snapshot.wetRms)
                    && std::isfinite(snapshot.residualRms)
@@ -423,7 +452,7 @@ void concurrent_snapshot_copy_remains_finite()
     expect(failures.load(std::memory_order_relaxed) == 0, "concurrent snapshot reader should only observe finite state");
 
     WoundSnapshot finalSnapshot;
-    core.copySnapshot(finalSnapshot);
+    expect(core.copySnapshot(finalSnapshot), "final concurrent snapshot copy should succeed");
     expect(finalSnapshot.inputRms > 0.001f, "concurrent snapshot stress should publish input activity");
     expect(finalSnapshot.wetRms > 0.001f, "concurrent snapshot stress should publish wet activity");
 }
@@ -441,6 +470,7 @@ int main()
         extremes_stay_aggressive_and_bounded();
         block_partition_determinism_and_reset();
         snapshot_reports_functional_state();
+        snapshot_copy_rejects_in_progress_publication();
         sample_rate_changes_discrete_timing_without_collapsing();
         concurrent_snapshot_copy_remains_finite();
         std::cout << "FormantWound DSP tests passed\n";

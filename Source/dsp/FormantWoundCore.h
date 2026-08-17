@@ -40,7 +40,10 @@ public:
     void prepare(double newSampleRate, int channelSeed) noexcept;
     void reset() noexcept;
     float processSample(float input, const FormantWoundParameters& parameters) noexcept;
-    void copySnapshot(WoundSnapshot& destination) const noexcept;
+    [[nodiscard]] bool copySnapshot(WoundSnapshot& destination) const noexcept;
+#if FORMANTWOUND_TESTING
+    void forceSnapshotSequenceForTest(std::uint32_t sequence) noexcept;
+#endif
 
 private:
     static constexpr int maxOrder = 16;

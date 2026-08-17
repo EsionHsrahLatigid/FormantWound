@@ -301,7 +301,7 @@ float FormantWoundCore::sanitize(float value) const noexcept
     return std::clamp(value, -4.0f, 4.0f);
 }
 
-void FormantWoundCore::copySnapshot(WoundSnapshot& destination) const noexcept
+bool FormantWoundCore::copySnapshot(WoundSnapshot& destination) const noexcept
 {
     for (int attempt = 0; attempt < 4; ++attempt)
     {
@@ -324,19 +324,11 @@ void FormantWoundCore::copySnapshot(WoundSnapshot& destination) const noexcept
         if (begin == end && (end & 1u) == 0u)
         {
             destination = next;
-            return;
+            return true;
         }
     }
 
-    for (std::size_t i = 0; i < destination.cells.size(); ++i)
-        destination.cells[i] = publishedSnapshot.cells[i].load(std::memory_order_relaxed);
-    destination.inputRms = publishedSnapshot.inputRms.load(std::memory_order_relaxed);
-    destination.wetRms = publishedSnapshot.wetRms.load(std::memory_order_relaxed);
-    destination.residualRms = publishedSnapshot.residualRms.load(std::memory_order_relaxed);
-    destination.envelopeMotion = publishedSnapshot.envelopeMotion.load(std::memory_order_relaxed);
-    destination.activeOrder = publishedSnapshot.activeOrder.load(std::memory_order_relaxed);
-    destination.rescue = publishedSnapshot.rescue.load(std::memory_order_relaxed);
-    destination.frozen = publishedSnapshot.frozen.load(std::memory_order_relaxed);
+    return false;
 }
 
 void FormantWoundCore::publishSnapshot(const WoundSnapshot& source) noexcept
@@ -354,4 +346,11 @@ void FormantWoundCore::publishSnapshot(const WoundSnapshot& source) noexcept
     publishedSnapshot.frozen.store(source.frozen, std::memory_order_relaxed);
     publishedSnapshot.sequence.store(begin + 2u, std::memory_order_release);
 }
+
+#if FORMANTWOUND_TESTING
+void FormantWoundCore::forceSnapshotSequenceForTest(std::uint32_t sequence) noexcept
+{
+    publishedSnapshot.sequence.store(sequence, std::memory_order_release);
+}
+#endif
 } // namespace formantwound::dsp

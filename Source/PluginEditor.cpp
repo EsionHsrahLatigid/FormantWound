@@ -126,15 +126,17 @@ void FormantWoundAudioProcessorEditor::resized()
 void FormantWoundAudioProcessorEditor::timerCallback()
 {
     formantwound::dsp::WoundSnapshot snapshot;
-    ownerProcessor.copyWoundSnapshot(snapshot);
-    display.setSnapshot(snapshot);
+    if (ownerProcessor.copyWoundSnapshot(snapshot))
+        display.setSnapshot(snapshot);
     updateReadout();
 }
 
 void FormantWoundAudioProcessorEditor::updateReadout()
 {
     formantwound::dsp::WoundSnapshot snapshot;
-    ownerProcessor.copyWoundSnapshot(snapshot);
+    if (! ownerProcessor.copyWoundSnapshot(snapshot))
+        return;
+
     status.setText(juce::String::formatted("%s   LPC%02d   IN %.4f   RES %.4f   WET %.4f   MOT %.3f",
                                            snapshot.rescue ? "RESCUE" : (snapshot.frozen ? "HOLD" : "LIVE"),
                                            snapshot.activeOrder,

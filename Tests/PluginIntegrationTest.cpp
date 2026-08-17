@@ -125,7 +125,7 @@ void processing_is_audible_and_editor_constructs()
     expect(rmsOf(buffer) > 0.01f, "plugin processing should remain audible");
 
     formantwound::dsp::WoundSnapshot snapshot;
-    processor.copyWoundSnapshot(snapshot);
+    expect(processor.copyWoundSnapshot(snapshot), "processor snapshot copy should succeed after processing");
     expect(snapshot.activeOrder >= 4, "processor should expose snapshot order");
 
     std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());

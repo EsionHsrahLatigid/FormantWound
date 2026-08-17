@@ -35,7 +35,7 @@ public:
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
 
-    void copyWoundSnapshot(formantwound::dsp::WoundSnapshot& destination) const noexcept;
+    [[nodiscard]] bool copyWoundSnapshot(formantwound::dsp::WoundSnapshot& destination) const noexcept;
 
     juce::AudioProcessorValueTreeState parameters;
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();

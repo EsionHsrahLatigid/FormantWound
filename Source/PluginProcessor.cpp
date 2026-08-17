@@ -141,12 +141,12 @@ void FormantWoundAudioProcessor::setStateInformation(const void* data, int sizeI
     }
 }
 
-void FormantWoundAudioProcessor::copyWoundSnapshot(formantwound::dsp::WoundSnapshot& destination) const noexcept
+bool FormantWoundAudioProcessor::copyWoundSnapshot(formantwound::dsp::WoundSnapshot& destination) const noexcept
 {
     formantwound::dsp::WoundSnapshot left;
     formantwound::dsp::WoundSnapshot right;
-    cores[0].copySnapshot(left);
-    cores[1].copySnapshot(right);
+    if (! cores[0].copySnapshot(left) || ! cores[1].copySnapshot(right))
+        return false;
 
     destination = left;
     for (std::size_t i = 0; i < destination.cells.size(); ++i)
@@ -158,6 +158,7 @@ void FormantWoundAudioProcessor::copyWoundSnapshot(formantwound::dsp::WoundSnaps
     destination.activeOrder = std::max(left.activeOrder, right.activeOrder);
     destination.rescue = left.rescue || right.rescue;
     destination.frozen = left.frozen || right.frozen;
+    return true;
 }
 
 juce::AudioProcessorEditor* FormantWoundAudioProcessor::createEditor()
